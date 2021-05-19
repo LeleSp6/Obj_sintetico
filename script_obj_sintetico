@@ -1,0 +1,99 @@
+
+
+
+
+set nocount on
+declare @cont int = 1, @qt_Tab int, @base_name varchar(50), @sql_text nvarchar(max), @sql_text_2 NVARCHAR(MAX)
+
+if OBJECT_ID('tempdb..#aux_databses') is not null
+begin
+drop table #aux_databses
+end
+
+select name , id = IDENTITY(int)  into #aux_databses from sys.databases
+where name not in (
+'master'
+,'tempdb'
+,'model'
+,'msdb'
+)
+
+
+
+if OBJECT_ID('tempdb..##aux_select') is not null
+begin
+drop table ##aux_select
+end
+
+
+create table ##aux_select
+(
+[schema]		varchar(500)
+,[Type]         varchar(500)
+,qtd			int 
+,[server_name] varchar(500)
+,[sql_version] varchar(500)
+--,Numero_Linhas     INT 
+--,Espaco_KB_Total   INT
+--,Espaco_KB_Usado   INT
+--,Espaco_KB_Sem_Uso INT
+,[database]    varchar(500)
+
+, id int identity
+)
+
+                --,Numero_Linhas =  CAST(NULL AS INT)
+			    --,Espaco_KB_Total   = CAST(NULL AS INT)
+			    --,Espaco_KB_Usado   = CAST(NULL AS INT)
+			    --,Espaco_KB_Sem_Uso = CAST(NULL AS INT)
+
+set @qt_Tab = (select count('') from #aux_databses)
+
+while @cont <= @qt_Tab
+begin
+
+select @base_name =  name from #aux_databses where id = @cont
+
+set @sql_text = 'insert into  ##aux_select' + char(13)
++ 'select 
+	[schema] =  b.name
+	,[Type]  =  case 
+	            when a.type  = ''U'' then  ''table''
+	            when a.type  = ''p'' then  ''Procedure''
+				when a.type  = ''FN'' then ''Function scalar''
+				when a.type  = ''TF'' then ''Function inline table value''
+				when a.type  = ''IF'' then ''Function table value'' end
+				,count('''') as qtd
+			    ,[server_name] =  @@SERVERNAME
+	            ,[sql_version] =  left(@@VERSION,26)
+			
+				,[database]    = '+''''+@base_name+''''+'
+	from ' +@base_name+ '.sys.objects  a
+	 join ' +@base_name+ '.sys.schemas b
+	on a.schema_id =  b.schema_id
+	where a.type in (''U'',''p'',''FN'',''TF'',''IF'')
+	group by    b.name
+	            ,case when a.type  = ''U'' then ''table''
+	            when a.type  = ''p''       then ''Procedure''
+				when a.type  = ''FN''      then ''Function scalar''
+				when a.type  = ''TF''      then ''Function inline table value''
+				when a.type  = ''IF''      then ''Function table value'' end
+				order by 1,2'
+
+				exec sp_executesql @stmp = @sql_text							
+				delete from #aux_databses  where id = @cont
+				set @cont +=1
+end
+
+
+
+select  
+[server_name]	
+,[database]	
+,[schema]	
+,[sql_version]	
+,[Type]
+,[qtd]	
+from ##aux_select 
+order by 1,2,3,4
+
